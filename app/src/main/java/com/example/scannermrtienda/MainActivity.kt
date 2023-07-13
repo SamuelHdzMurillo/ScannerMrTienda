@@ -1,6 +1,8 @@
 package com.example.scannermrtienda
 
 import android.Manifest
+import android.text.InputType
+
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -8,12 +10,18 @@ import android.os.Environment
 import android.util.Log
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.budiyev.android.codescanner.*
+import androidx.core.content.FileProvider
+import com.budiyev.android.codescanner.CodeScanner
 
+import android.content.Intent
+
+import com.budiyev.android.codescanner.CodeScannerView
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -21,8 +29,7 @@ import java.io.OutputStreamWriter
 
 class MainActivity : AppCompatActivity() {
     private lateinit var codeScanner: CodeScanner
-    private var productCount: Int = 0
-    private var productData: StringBuilder = StringBuilder()
+    private var productData: HashMap<String, Int> = HashMap()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,6 +51,11 @@ class MainActivity : AppCompatActivity() {
         val exportButton: Button = findViewById(R.id.export_button)
         exportButton.setOnClickListener {
             exportDataToTxtFile()
+        }
+
+        val shareButton: Button = findViewById(R.id.share_button)
+        shareButton.setOnClickListener {
+            shareExportedFile()
         }
     }
 
@@ -78,31 +90,47 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleScanResult(code: String) {
-        // Contar productos con el mismo código
-        // Aquí debes implementar tu lógica para contar los productos
-        productCount++
+        // Preguntar al usuario la cantidad de productos escaneados
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Cantidad de productos")
+        builder.setMessage("Ingrese la cantidad de productos con el código $code:")
 
-        // Preguntar si desea continuar o no
-        // Aquí puedes mostrar un diálogo de confirmación o utilizar cualquier otra interfaz de usuario
-        // En este ejemplo, se utiliza un simple Toast para mostrar el mensaje
-        Toast.makeText(this, "Productos encontrados: $productCount", Toast.LENGTH_SHORT).show()
+        val input = EditText(this)
+        input.inputType = InputType.TYPE_CLASS_NUMBER // Establecer el tipo de entrada como numérico
+        builder.setView(input)
 
-        // Guardar datos del producto en el StringBuilder
-        productData.append("Código: $code\n")
+        builder.setPositiveButton("Aceptar") { _, _ ->
+            val quantity = input.text.toString().toIntOrNull() ?: 0
 
-        // Si no desea continuar, exportar la información a un archivo TXT
-        // Aquí debes implementar tu lógica para exportar la información
-        // En este ejemplo, simplemente se muestra un log con la información
-        if (!continueScanning()) {
-            Log.d(TAG, "Información exportada:\nCantidad de productos: $productCount")
+            // Actualizar la cantidad de productos en productData
+            val currentCount = productData[code] ?: 0
+            val totalCount = currentCount + quantity
+            productData[code] = totalCount
+
+            // Mostrar mensaje con la cantidad de productos actualizada
+            Toast.makeText(this, "Productos encontrados: $totalCount", Toast.LENGTH_SHORT).show()
+
+            // Preguntar si el usuario desea continuar escaneando
+            val continueBuilder = AlertDialog.Builder(this)
+            continueBuilder.setTitle("Continuar escaneando")
+            continueBuilder.setMessage("¿Desea continuar escaneando?")
+            continueBuilder.setPositiveButton("Sí") { _, _ ->
+                codeScanner.startPreview()
+            }
+            continueBuilder.setNegativeButton("No") { _, _ ->
+                // El usuario no desea continuar escaneando, hacer algo aquí si es necesario
+            }
+            continueBuilder.show()
         }
+
+        builder.setNegativeButton("Cancelar") { dialog, _ ->
+            dialog.cancel()
+            codeScanner.startPreview()
+        }
+
+        builder.show()
     }
 
-    private fun continueScanning(): Boolean {
-        // Aquí debes implementar tu lógica para preguntar si desea continuar o no
-        // En este ejemplo, siempre se continuará escaneando
-        return true
-    }
 
     private fun exportDataToTxtFile() {
         if (productData.isNotEmpty()) {
@@ -111,7 +139,13 @@ class MainActivity : AppCompatActivity() {
                 val file = File(getExternalFilesDir(null), fileName)
                 val outputStream = FileOutputStream(file)
                 val writer = OutputStreamWriter(outputStream)
-                writer.append(productData.toString())
+
+                for ((code, count) in productData) {
+                    val line = "$code,$count"
+                    writer.append(line)
+                    writer.append("\n")
+                }
+
                 writer.flush()
                 writer.close()
                 outputStream.close()
@@ -124,6 +158,27 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "No hay datos para exportar", Toast.LENGTH_SHORT).show()
         }
     }
+
+    private fun shareExportedFile() {
+        val fileName = "product_data.txt"
+        val file = File(getExternalFilesDir(null), fileName)
+
+        if (file.exists()) {
+            val fileUri = FileProvider.getUriForFile(this, "${packageName}.provider", file)
+            val shareIntent = Intent(Intent.ACTION_SEND)
+            shareIntent.type = "text/plain"
+            shareIntent.putExtra(Intent.EXTRA_STREAM, fileUri)
+            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+            val chooserIntent = Intent.createChooser(shareIntent, "Compartir archivo")
+            chooserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) // Agregar esta línea
+
+            startActivity(chooserIntent)
+        } else {
+            Toast.makeText(this, "No se encontró el archivo exportado", Toast.LENGTH_SHORT).show()
+        }
+    }
+
 
     override fun onResume() {
         super.onResume()
