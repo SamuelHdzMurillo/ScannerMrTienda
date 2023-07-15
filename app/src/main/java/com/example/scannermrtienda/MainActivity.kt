@@ -2,15 +2,17 @@ package com.example.scannermrtienda
 
 import android.Manifest
 import android.text.InputType
-
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.content.Intent
+
 import android.os.Environment
 import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -18,9 +20,6 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.budiyev.android.codescanner.CodeScanner
-
-import android.content.Intent
-
 import com.budiyev.android.codescanner.CodeScannerView
 import java.io.File
 import java.io.FileOutputStream
@@ -57,6 +56,11 @@ class MainActivity : AppCompatActivity() {
         shareButton.setOnClickListener {
             shareExportedFile()
         }
+
+        val addProductButton: Button = findViewById(R.id.add_product_button)
+        addProductButton.setOnClickListener {
+            addProductManually()
+        }
     }
 
     private fun startCamera() {
@@ -90,37 +94,43 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleScanResult(code: String) {
-        // Preguntar al usuario la cantidad de productos escaneados
         val builder = AlertDialog.Builder(this)
         builder.setTitle("Cantidad de productos")
         builder.setMessage("Ingrese la cantidad de productos con el código $code:")
 
         val input = EditText(this)
-        input.inputType = InputType.TYPE_CLASS_NUMBER // Establecer el tipo de entrada como numérico
+        input.inputType = InputType.TYPE_CLASS_NUMBER
+        input.setRawInputType(InputType.TYPE_CLASS_NUMBER)
         builder.setView(input)
 
         builder.setPositiveButton("Aceptar") { _, _ ->
-            val quantity = input.text.toString().toIntOrNull() ?: 0
+            val quantityText = input.text.toString()
+            if (quantityText.isNotEmpty()) {
+                val quantity = quantityText.toIntOrNull()
 
-            // Actualizar la cantidad de productos en productData
-            val currentCount = productData[code] ?: 0
-            val totalCount = currentCount + quantity
-            productData[code] = totalCount
+                if (quantity != null) {
+                    val currentCount = productData[code] ?: 0
+                    val totalCount = currentCount + quantity
+                    productData[code] = totalCount
 
-            // Mostrar mensaje con la cantidad de productos actualizada
-            Toast.makeText(this, "Productos encontrados: $totalCount", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Productos encontrados: $totalCount", Toast.LENGTH_SHORT).show()
 
-            // Preguntar si el usuario desea continuar escaneando
-            val continueBuilder = AlertDialog.Builder(this)
-            continueBuilder.setTitle("Continuar escaneando")
-            continueBuilder.setMessage("¿Desea continuar escaneando?")
-            continueBuilder.setPositiveButton("Sí") { _, _ ->
-                codeScanner.startPreview()
+                    val continueBuilder = AlertDialog.Builder(this)
+                    continueBuilder.setTitle("Continuar escaneando")
+                    continueBuilder.setMessage("¿Desea continuar escaneando?")
+                    continueBuilder.setPositiveButton("Sí") { _, _ ->
+                        codeScanner.startPreview()
+                    }
+                    continueBuilder.setNegativeButton("No") { _, _ ->
+                        // El usuario no desea continuar escaneando, hacer algo aquí si es necesario
+                    }
+                    continueBuilder.show()
+                } else {
+                    Toast.makeText(this, "Ingrese una cantidad válida", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "Ingrese una cantidad válida", Toast.LENGTH_SHORT).show()
             }
-            continueBuilder.setNegativeButton("No") { _, _ ->
-                // El usuario no desea continuar escaneando, hacer algo aquí si es necesario
-            }
-            continueBuilder.show()
         }
 
         builder.setNegativeButton("Cancelar") { dialog, _ ->
@@ -131,6 +141,42 @@ class MainActivity : AppCompatActivity() {
         builder.show()
     }
 
+    private fun addProductManually() {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Agregar producto sin código")
+
+        val layout = LinearLayout(this)
+        layout.orientation = LinearLayout.VERTICAL
+
+        val codeInput = EditText(this)
+        codeInput.hint = "Código del producto"
+        layout.addView(codeInput)
+
+        val quantityInput = EditText(this)
+        quantityInput.hint = "Cantidad"
+        layout.addView(quantityInput)
+
+        builder.setView(layout)
+
+        builder.setPositiveButton("Agregar") { _, _ ->
+            val code = codeInput.text.toString()
+            val quantity = quantityInput.text.toString().toIntOrNull() ?: 0
+
+            // Actualizar la cantidad de productos en productData
+            val currentCount = productData[code] ?: 0
+            val totalCount = currentCount + quantity
+            productData[code] = totalCount
+
+            // Mostrar mensaje con la cantidad de productos actualizada
+            Toast.makeText(this, "Productos encontrados: $totalCount", Toast.LENGTH_SHORT).show()
+        }
+
+        builder.setNegativeButton("Cancelar") { dialog, _ ->
+            dialog.cancel()
+        }
+
+        builder.show()
+    }
 
     private fun exportDataToTxtFile() {
         if (productData.isNotEmpty()) {
@@ -178,7 +224,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "No se encontró el archivo exportado", Toast.LENGTH_SHORT).show()
         }
     }
-
 
     override fun onResume() {
         super.onResume()
